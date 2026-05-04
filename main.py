@@ -4,8 +4,14 @@ from pydantic import BaseModel
 from pytrends.request import TrendReq
 from typing import Optional
 import pandas as pd
+import traceback
+import logging
 import time
 import os
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="PyTrends API", description="API untuk mengambil data Google Trends")
 
@@ -26,13 +32,20 @@ class TrendRequest(BaseModel):
 # Helper untuk fetch dari PyTrends dengan rate limiting untuk mencegah block
 def get_pytrends_data(keyword: str, timeframe: str = "now 7-d"):
     try:
+        logger.info(f"Fetching trends for keyword='{keyword}', timeframe='{timeframe}'")
+        
         # Rate limiting untuk menghindari deteksi bot oleh Google
-        time.sleep(60)  # jeda 60 detik antar request untuk menghindari IP diblokir Google
+        time.sleep(2)
         
         pytrends = TrendReq(hl='en-US', tz=360)
+        logger.info("TrendReq initialized")
+        
         pytrends.build_payload(kw_list=[keyword], timeframe=timeframe)
+        logger.info("Payload built successfully")
         
         interest_over_time_df = pytrends.interest_over_time()
+        logger.info(f"Got interest_over_time, empty={interest_over_time_df.empty}")
+        
         if interest_over_time_df.empty:
             return {"error": "No data found", "keyword": keyword, "timeframe": timeframe}
         
@@ -52,6 +65,8 @@ def get_pytrends_data(keyword: str, timeframe: str = "now 7-d"):
             if top_df is not None and not top_df.empty:
                 related_top = top_df['query'].head(5).tolist()
         
+        logger.info(f"Success: {len(data)} data points, {len(related_top)} related queries")
+        
         return {
             "keyword": keyword,
             "timeframe": timeframe,
@@ -60,13 +75,16 @@ def get_pytrends_data(keyword: str, timeframe: str = "now 7-d"):
             "related_queries": related_top
         }
     except Exception as e:
-        return {"error": str(e), "keyword": keyword}
+        error_detail = traceback.format_exc()
+        logger.error(f"Error fetching trends for '{keyword}': {error_detail}")
+        return {"error": str(e), "keyword": keyword, "traceback": error_detail}
 
 @app.post("/trends")
 async def get_trends(request: TrendRequest):
+    logger.info(f"POST /trends - keyword='{request.keyword}', timeframe='{request.timeframe}'")
     result = get_pytrends_data(request.keyword, request.timeframe)
     if "error" in result:
-        raise HTTPException(status_code=500, detail=result["error"])
+        raise HTTPException(status_code=500, detail=result)
     return result
 
 @app.get("/")
