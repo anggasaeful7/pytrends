@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pytrends.request import TrendReq
 from typing import Optional
+import pandas as pd
 import time
+import os
 
 app = FastAPI(title="PyTrends API", description="API untuk mengambil data Google Trends")
 
@@ -25,7 +27,7 @@ class TrendRequest(BaseModel):
 def get_pytrends_data(keyword: str, timeframe: str = "now 7-d"):
     try:
         # Rate limiting untuk menghindari deteksi bot oleh Google
-        time.sleep(60)  # jeda 60 detik antar request
+        time.sleep(60)  # jeda 60 detik antar request untuk menghindari IP diblokir Google
         
         pytrends = TrendReq(hl='en-US', tz=360)
         pytrends.build_payload(kw_list=[keyword], timeframe=timeframe)
@@ -70,3 +72,8 @@ async def get_trends(request: TrendRequest):
 @app.get("/")
 async def root():
     return {"message": "PyTrends API is running", "endpoint": "/trends (POST)"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
